@@ -64,10 +64,10 @@ datos<- OJ
 ```{r}
 #| label: eda
 
-ggplot(data = OJ, aes(x = Purchase, y = ..count.., fill = Purchase)) +
-  geom_bar()+
-  labs(title = "Distribución de la variable Purchase ") +
-  theme(plot.title = element_text(hjust=0.5))
+ggplot(datos, aes(x = Purchase, fill = Purchase)) +
+  geom_bar() +
+  geom_text(stat = 'count', aes(label = ..count..), vjust = -0.5) +
+  labs(title = "Distribución de la variable 'Purchase' ")
 
 ```
 ## Partición de datos 
