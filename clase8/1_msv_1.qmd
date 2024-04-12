@@ -147,5 +147,3 @@ autoplot(tune_res)
 ```{r}
 select_best(tune_res, metric = "accuracy")
 ```
-
-Finalizado
