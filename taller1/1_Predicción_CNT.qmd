@@ -1,0 +1,225 @@
+---
+title: "Bicicletas_rentadas_x_día"
+author: "CFLM"
+format: 
+  html:
+    toc: true
+    embed-resources: true
+knitr: 
+  opts_chunk: 
+    fig.path: "Gráficos_knn/"
+
+---
+
+# KNN. Regresión. 
+
+El proceso de alquiler de bicicletas compartidas está muy
+correlacionado con las condiciones ambientales y estacionales. Por ejemplo, las
+condiciones meteorológicas, la precipitación, el día de la semana, la estación, la hora del
+día, etc. pueden afectar a los comportamientos de alquiler. El conjunto de datos
+principales está relacionado con el registro histórico de dos años correspondiente a los
+años 2011 y 2012 del sistema Capital Bikeshare, Washington D.C., EE. UU., que está
+disponible públicamente en <http://capitalbikeshare.com/system-data>. Los datos fueron
+agregados cada dos horas y cada día y, a continuación se añadió la información
+meteorológica y estacional correspondiente. La información meteorológica se extrajo
+de <http://www.freemeteo.com>.
+
+
+Realizar una Regresión para la predicción del número de bicicletas de alquiler por día
+(cnt) en función del entorno y de la estación, por ende se usará el archivo con datos
+diarios.
+Utilice las variables predictoras:
+- `atemp` (sensación térmica normalizada en grados centígrados),
+- `hum` (humedad normalizada),
+- `windspeed` (velocidad del viento normalizada).
+La variable a ser predicha es `cnt`.
+
+
+## Librerías
+```{r}
+#| label: librerías
+
+pacman::p_load(tidyverse,
+               tidymodels,
+               ggplot2,
+               dplyr,
+               janitor,
+               ISLR,
+               inspectdf,
+               GGally,
+               optimx,
+               kknn)
+```
+
+## Datos
+
+```{r}
+#| label: importación_datos
+
+datos_1<- read.csv("day.csv")
+
+```
+
+```{r}
+summary(select(datos_1, atemp, hum, windspeed, cnt))
+
+```
+
+```{r}
+boxplot(list(atemp = datos_1$atemp, hum = datos_1$hum, windspeed = datos_1$windspeed, cnt = datos_1$cnt))
+
+```
+
+```{r}
+ggpairs(select(datos_1, atemp, hum, windspeed, cnt))
+```
+
+
+
+```{r}
+
+set.seed(10)
+
+particion <- initial_split(datos_1, prop = 0.8, strata = cnt)
+
+cv_entre <- training(particion)
+cv_test <- testing(particion)
+```
+
+
+```{r}
+
+knn_spec<- nearest_neighbor() |> 
+  set_engine("kknn")|>
+  set_args(neighbors = tune())|>
+  set_mode("regression")
+
+
+
+```
+
+```{r}
+
+rec_spec <- recipe(cnt ~ atemp + hum + windspeed, data = cv_entre)|>
+  step_normalize(all_numeric_predictors())
+
+```
+
+```{r}
+cv_ft <- workflow() |>
+  add_recipe(rec_spec) |>
+  add_model(knn_spec)
+
+```
+```{r}
+set.seed(10)
+obj_rem<- vfold_cv(cv_entre, v=10)
+```
+
+```{r}
+#seq(1,10)) por q son 10 folds
+vecinos <- tibble(neighbors = seq(1,10))
+
+class(vecinos)
+```
+
+```{r}
+
+tune_res<- tune_grid(
+  object = cv_ft,
+  resamples = obj_rem,
+  grid = vecinos)
+
+```
+
+```{r}
+
+autoplot(tune_res)
+```
+
+
+```{r}
+
+show_best(tune_res, metric = "rmse")
+```
+```{r}
+mejor_hiperparametro<- select_by_one_std_err(tune_res, 
+                                             neighbors, 
+                                             metric = "rmse")
+```
+
+```{r}
+final_ft<- finalize_workflow(cv_ft,
+                             mejor_hiperparametro)
+final_ft
+
+```
+
+```{r}
+final_fit<- fit(final_ft,
+                cv_entre)
+final_fit
+```
+
+```{r}
+fit_test<- augment(final_fit,
+                   new_data = cv_test)
+```
+```{r}
+fit_test |>
+  metrics(cnt, .pred)
+```
+
+```{r}
+config_metricas<- metric_set(rmse, mae)
+config_metricas(fit_test,
+                truth = cnt,
+                estimate = .pred)
+```
+
+```{r}
+# Suponiendo que estos son tus valores para atemp, hum, y windspeed:
+nuevo_vector <- tibble(
+  atemp = c(0.5),  # Reemplaza esto con tu valor real para atemp
+  hum = c(0.85),    # Reemplaza esto con tu valor real para hum
+  windspeed = c(0.3)  # Reemplaza esto con tu valor real para windspeed
+)
+# Realizar la predicción utilizando el modelo finalizado y ajustado
+prediccion <- predict(final_fit, new_data = nuevo_vector)
+# Ver la predicción
+prediccion
+
+```
+
+
+
+```{r}
+
+library(optimx)
+
+# La función a minimizar
+funcion_costo <- function(x, modelo, valor_deseado) {
+  # Hacer una predicción usando el modelo y los valores actuales de las variables
+  pred <- predict(modelo, tibble(atemp = x[1], hum = x[2], windspeed = x[3]))$.pred
+  # Calcular y devolver la diferencia al cuadrado entre la predicción y el valor deseado
+  (pred - valor_deseado)^2
+}
+
+# El modelo que ya está entrenado
+modelo_final <- final_fit
+
+# El valor deseado
+valor_deseado <- 1500
+
+# Valores iniciales de las variables predictoras
+valores_iniciales <- c(atemp = 0.5, hum = 0.5, windspeed = 0.5)
+
+# Usar optimización para encontrar las variables predictoras
+resultados <- optimx(valores_iniciales, funcion_costo, modelo = modelo_final, valor_deseado = valor_deseado)
+
+# Ver los resultados
+print(resultados)
+
+
+
+```
