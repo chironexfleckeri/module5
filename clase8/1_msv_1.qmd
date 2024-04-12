@@ -1,0 +1,150 @@
+---
+title: "Máquinas de Soporte Vectorial"
+author: "CFLM"
+format: 
+  html:
+    toc: true
+    toc-title: "Tabla de Contenidos"
+    toc-location: body
+    embed-resources: true
+knitr: 
+  opts_chunk: 
+    fig.path: "figuras_MSV/"
+
+execute: 
+  warning: false
+---
+
+```{r}
+options(tidyverse.quiet = FALSE)
+
+
+```
+
+
+
+# Librerías 
+
+```{r}
+#| label: librerias
+pacman::p_load(tidyverse, #para manip.datos
+               tidymodels,
+               ISLR,
+               janitor,
+               inspectdf,
+               GGally, 
+               kernlab, 
+               e1071)
+
+```
+
+
+# Datos 
+
+Vamos a usar el conjunto de datos `OJ` de la librería `ISLR` sobre la preferencia de un tipo u otro de jugo de naranja.
+
+La variable a predecir es Purchase que tiene dos categorías 
+
+CH= Citrus Hill
+MM=  Minute Maid Orange Juice
+
+Esta es una tarea de machine learning de **Clasificació**
+
+```{r}
+#| label: datos
+
+datos<- OJ
+
+
+```
+
+
+## Análisis Exploratorio de Datos 
+
+```{r}
+#| label: eda
+
+ggplot(data = OJ, aes(x = Purchase, y = ..count.., fill = Purchase)) +
+  geom_bar()+
+  labs(title = "Distribución de la variable Purchase ") +
+  theme(plot.title = element_text(hjust=0.5))
+
+```
+## Partición de datos 
+
+```{r}
+set.seed(10)
+
+particion<- initial_split(datos, prop = 0.8, strata =  
+                            Purchase)
+datos_entre<- training(particion)
+datos_test<- testing(particion)
+```
+
+## Definición Genérica del Modelo
+
+::: {.callout-note}
+
+Es importante estandarizar las variable predictoraas cuando no están en la misma scala, con `scale=TRUE`
+
+:::
+
+```{r}
+
+msv_spec <- svm_poly(degree = 1) |> 
+  set_engine("kernlab", scale=TRUE) |> 
+  set_args(cost=tune()) |> 
+  set_mode("classification")
+
+```
+
+
+## Definición del flujo de trabajo 
+
+```{r}
+
+msv_ft<- workflow() |> 
+  add_model(msv_spec) |> 
+  add_formula(Purchase ~ .)
+
+```
+
+## Definición de objeto de validación cruzda 
+
+```{r}
+set.seed(10)
+obj_rem<- vfold_cv(datos_entre, v=10)
+
+```
+
+## Crear el obejto de Grilla
+
+```{r}
+
+cost_valores<- tibble(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 15, 20))
+```
+
+
+## Afinar el hiperparámetro 
+
+```{r}
+
+tune_res<- tune_grid(
+  object = msv_ft,
+  resamples= obj_rem,
+  grid = cost_valores
+  
+)
+
+```
+
+## Revisión gráfica del ajuste del hiperparámetro 
+
+```{r}
+autoplot(tune_res)
+```
+
+```{r}
+select_best(tune_res, metric = "accuracy")
+```
+
